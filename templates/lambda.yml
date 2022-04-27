@@ -1,0 +1,290 @@
+# This sample, non-production-ready template describes a lambda function for creating a SageMaker notebook pre-signed url.
+# © 2021 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
+# This AWS Content is provided subject to the terms of the AWS Customer Agreement available at
+# http://aws.amazon.com/agreement or other written agreement between Customer and either
+# Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS CFT for deploying Lamnbda and EventBridge config.'
+Parameters:
+
+  EventRuleName:
+    Type: String
+    Description: EventBridge rule name
+
+  EventBridgeFunctionName:
+    Type: String
+    Description: EventBridge Lambda function name
+
+  RefreshFunctionName:
+    Type: String
+    Description: Lambda function name
+
+Resources:
+
+# Build Role for AWS Lambda functions
+  LambdaBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaBuildRole
+      Description: 'This role will enable lambda to leverage EventBridge as a trigger.'
+      MaxSessionDuration: 3600 # in seconds
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+# IAM Policy for SageMaker Presigned URL
+  SageMakerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "LambdaPresignedURLPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - 'sagemaker:CreatePresignedNotebookInstanceUrl'
+          Resource:
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:notebook-instance/*'
+      Roles:
+        - !Ref LambdaBuildRole
+
+# IAM Policy for SageMaker Presigned URL
+  EventBridgePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "LambdaEventBridgePolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - events:DescribeRule
+            - events:DescribeEventBus
+            - events:DescribeEventSource
+            - events:ListEventBuses
+            - events:ListEventSources
+            - events:ListRuleNamesByTarget
+            - events:ListRules
+            - events:ListTargetsByRule
+            - events:TestEventPattern
+            - events:DescribeArchive
+            - events:ListArchives
+            - events:DescribeReplay
+            - events:ListReplays
+            - events:DescribeConnection
+            - events:ListConnections
+            - events:DescribeApiDestination
+            - events:ListApiDestinations
+          Resource:
+            - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${EventRuleName}'
+      Roles:
+        - !Ref LambdaBuildRole
+
+# IAM Policy for Lambda CloudWatch Logs
+  LambdaCloudWatchPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "LambdaCloudWatchPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:CreateLogGroup
+          Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+            - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${EventBridgeFunctionName}:*"
+      Roles:
+        - !Ref LambdaBuildRole
+
+# IAM Policy for Lambda CloudWatch Logs
+  SSMParamsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "SSMParamsPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - ssm:PutParameter
+            - ssm:DescribeParameters
+          Resource:
+            - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/SageMaker/Notebooks/*'
+      Roles:
+        - !Ref LambdaBuildRole
+
+  SageMakerReadOnlyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref LambdaBuildRole
+      ManagedPolicyName: LambdaSageMakerReadOnlyPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - sagemaker:ListNotebookInstances
+          - sagemaker:ListNotebookInstanceLifecycleConfigs
+          - sagemaker:DescribeImage
+          - sagemaker:DescribeImageVersion
+          - sagemaker:DescribeNotebookInstance
+          - sagemaker:DescribeNotebookInstanceLifecycleConfig
+          Resource:
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:*'
+
+  SvcCatalogReadOnlyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref LambdaBuildRole
+      ManagedPolicyName: SvcCatalogReadOnlyPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - servicecatalog:DescribeProvisioningParameters
+          Resource:
+            - !Sub 'arn:aws:catalog:${AWS::Region}:${AWS::AccountId}:product/*'
+
+  EventBridgeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      FunctionName: !Ref EventBridgeFunctionName
+      Role: !GetAtt LambdaBuildRole.Arn
+      Handler: index.lambda_handler
+      Timeout: 630
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          sm_client = boto3.client('sagemaker')
+          ssm_client = boto3.client('ssm')
+
+          def lambda_handler(event, context):
+
+          # Store relevant information to variables
+              event_data = event['detail']['responseElements']['recordDetail']
+              user_name = event['detail']['requestParameters']['provisioningParameters'][1]['value']
+              notebook_name="%s-Notebook"%user_name
+
+          # Wait for notebook to become available
+              waiter = sm_client.get_waiter('notebook_instance_in_service')
+              waiter.wait(
+                  NotebookInstanceName=notebook_name,
+                  WaiterConfig={
+                      'Delay': 30,
+                      'MaxAttempts': 20
+                  }
+                )
+              print("Notebook Ready!")
+
+          # Create presigned URL using notebook_name
+              generate_presigned_url = sm_client.create_presigned_notebook_instance_url(
+                  NotebookInstanceName=notebook_name,
+                  SessionExpirationDurationInSeconds=43200
+              )
+              ps_url = generate_presigned_url['AuthorizedUrl']
+
+          # Create SSM parameter to store user Notebook presigned url
+              create_parameter = ssm_client.put_parameter(
+                  Name="/SageMaker/Notebooks/%s-Notebook"%user_name,
+                  Description='Presigned URL for user.',
+                  Value=ps_url,
+                  Type='String',
+                  Overwrite=True,
+                  Tier='Standard'
+              )
+      Description: Invoke a function during stack creation.
+      TracingConfig:
+        Mode: Active
+
+  RefreshURLFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      FunctionName: !Ref RefreshFunctionName
+      Role: !GetAtt LambdaBuildRole.Arn
+      Handler: index.lambda_handler
+      Timeout: 630
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          sm_client = boto3.client('sagemaker')
+          ssm_client = boto3.client('ssm')
+
+          def lambda_handler(event, context):
+          # Create new presigned URL
+              user_name = event['user_name']
+              notebook_name="%s-Notebook"%user_name
+              refresh_presigned_url = sm_client.create_presigned_notebook_instance_url(
+                  NotebookInstanceName=notebook_name,
+                  SessionExpirationDurationInSeconds=3600
+              )
+              ps_url = refresh_presigned_url['AuthorizedUrl']
+
+          # Refresh SSM parameter with new presigned url
+              update_parameter = ssm_client.put_parameter(
+                  Name="/SageMaker/Notebooks/%s-Notebook"%user_name,
+                  Description='Presigned URL for user.',
+                  Value=ps_url,
+                  Type='String',
+                  Overwrite=True,
+                  Tier='Standard'
+              )
+      Description: Function that enables developers to generate a new presigned URL.
+      TracingConfig:
+        Mode: Active
+
+  Version:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref EventBridgeFunction
+      Description: 1
+
+  SvcCatalogEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "EventRule"
+      Name: !Ref EventRuleName
+      EventPattern:
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource : ["servicecatalog.amazonaws.com"]
+          eventName: ["ProvisionProduct"]
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - "EventBridgeFunction"
+              - "Arn"
+          Id: !Ref EventBridgeFunction
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EventBridgeFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "SvcCatalogEventRule"
+          - "Arn"

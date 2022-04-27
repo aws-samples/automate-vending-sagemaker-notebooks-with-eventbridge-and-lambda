@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  python3.9
+  Sample SAM Template for eventbridge-function
+
+Globals:
+  Function:
+    Timeout: 3
+
+Parameters:
+  EventBridgeFunctionName:
+    Type: String
+    Default: EventBridgeFunction
+
+  EventRuleName:
+    Type: String
+    Default: SvcCatalogEventRule
+
+  RefreshFunctionName:
+    Type: String
+    Default: RefreshURLFunction
+
+Resources:
+
+  SvcCatalogEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "EventRule"
+      Name: !Ref EventRuleName
+      EventPattern:
+        detail-type:
+          - "AWS API Call via CloudTrail"
+        detail:
+          eventSource : ["servicecatalog.amazonaws.com"]
+          eventName: ["ProvisionProduct"]
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - "EventBridgeFunction"
+              - "Arn"
+          Id: !Ref EventBridgeFunctionName
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EventBridgeFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "SvcCatalogEventRule"
+          - "Arn"
+
+  EventBridgeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: eventbridge_app/
+      Handler: app.lambda_handler
+      Timeout: 630
+      PackageType: Zip
+      FunctionName: !Ref EventBridgeFunctionName
+      Runtime: python3.9
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /hello
+            Method: get
+      Policies:
+        - Statement:
+            - Sid: LambdaEventBridgePolicy
+              Effect: "Allow"
+              Action:
+                - events:DescribeRule
+                - events:DescribeEventBus
+                - events:DescribeEventSource
+                - events:ListEventBuses
+                - events:ListEventSources
+                - events:ListRuleNamesByTarget
+                - events:ListRules
+                - events:ListTargetsByRule
+                - events:TestEventPattern
+                - events:DescribeArchive
+                - events:ListArchives
+                - events:DescribeReplay
+                - events:ListReplays
+                - events:DescribeConnection
+                - events:ListConnections
+                - events:DescribeApiDestination
+                - events:ListApiDestinations
+              Resource:
+                - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${EventRuleName}'
+        - Statement:
+            - Sid: LambdaCloudWatchPolicy
+              Effect: "Allow"
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:CreateLogGroup
+              Resource:
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${EventBridgeFunctionName}:*"
+        - Statement:
+            - Sid: SSMParamsPolicy
+              Effect: "Allow"
+              Action:
+                - ssm:PutParameter
+                - ssm:DescribeParameters
+              Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/SageMaker/Notebooks/*'
+        - Statement:
+            - Sid: SageMakerPolicy
+              Effect: "Allow"
+              Action:
+                - sagemaker:CreatePresignedNotebookInstanceUrl
+              Resource:
+                - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:notebook-instance/*'
+        - Statement:
+            - Sid: LambdaSageMakerReadOnlyPolicy
+              Effect: "Allow"
+              Action:
+                - sagemaker:ListNotebookInstances
+                - sagemaker:ListNotebookInstanceLifecycleConfigs
+                - sagemaker:DescribeImage
+                - sagemaker:DescribeImageVersion
+                - sagemaker:DescribeNotebookInstance
+                - sagemaker:DescribeNotebookInstanceLifecycleConfig
+              Resource:
+                - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:*'
+
+  RefreshURLFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: refresh_url_app/
+      Handler: app.lambda_handler
+      Timeout: 630
+      PackageType: Zip
+      FunctionName: !Ref RefreshFunctionName
+      Runtime: python3.9
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /refreshurl
+            Method: post
+      Policies:
+        - Statement:
+            - Sid: RefreshURLCloudWatchPolicy
+              Effect: "Allow"
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:CreateLogGroup
+              Resource:
+                - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${EventBridgeFunctionName}:*"
+        - Statement:
+            - Sid: RefreshURLSSMParamsPolicy
+              Effect: "Allow"
+              Action:
+                - ssm:PutParameter
+                - ssm:DescribeParameters
+              Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/SageMaker/Notebooks/*'
+        - Statement:
+            - Sid: RefreshURLSMURLPolicy
+              Effect: "Allow"
+              Action:
+                - sagemaker:CreatePresignedNotebookInstanceUrl
+              Resource:
+                - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:notebook-instance/*'
+        - Statement:
+            - Sid: RefreshURLSMReadOnlyPolicy
+              Effect: "Allow"
+              Action:
+                - sagemaker:ListNotebookInstances
+                - sagemaker:ListNotebookInstanceLifecycleConfigs
+                - sagemaker:DescribeImage
+                - sagemaker:DescribeImageVersion
+                - sagemaker:DescribeNotebookInstance
+                - sagemaker:DescribeNotebookInstanceLifecycleConfig
+              Resource:
+                - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:*'
+Outputs:
+  RefreshURLFunctionAPI:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/refreshurl/"
+  RefreshURLFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt RefreshURLFunction.Arn
+  RefreshURLFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt RefreshURLFunction.Arn

@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey" : "EventRuleName",
+    "ParameterValue" : "DemoEventRule"
+  },
+  {
+    "ParameterKey" : "RefreshFunctionName",
+    "ParameterValue" : "RefreshURLFunction"
+  },
+  {
+    "ParameterKey" : "EventBridgeFunctionName",
+    "ParameterValue" : "EventBridgeServiceCatalogFunction"
+  }
+]

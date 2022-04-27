@@ -1,0 +1,268 @@
+# This sample, non-production-ready template describes a service catalog notebook config.
+# © 2021 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
+# This AWS Content is provided subject to the terms of the AWS Customer Agreement available at
+# http://aws.amazon.com/agreement or other written agreement between Customer and either
+# Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+
+  NotebookInstanceType:
+    AllowedValues:
+      - ml.t2.medium
+      - ml.m4.xlarge
+      - ml.p2.xlarge
+    ConstraintDescription: Must select a valid notebook instance type.
+    Description: Select Instance type for the SageMaker Notebook
+    Type: String
+
+  S3IAMConfigStackName:
+    Type: String
+    Description: Stack name which has all of the s3 and iam configuration
+
+  ServiceCatalogTemplateName:
+    Type: String
+    Description: Service Catalog CFT configuration
+
+  S3BucketName:
+    Type: String
+    Description: S3 Bucket Name
+
+  UserIAMPrincipal:
+    Type: String
+    Description: User's IAM user or role they are using for this demo.
+
+Resources:
+
+
+#This is attached to the Role that is used to Execute the Notebook instance
+  SVCSMExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCSMExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - sagemaker:ListDomains
+          - sagemaker:ListTags
+          - sagemaker:ListUserProfiles
+          - sagemaker:ListApps
+          - sagemaker:ListNotebookInstances
+          - sagemaker:ListNotebookInstanceLifecycleConfigs
+          - sagemaker:DescribeImage
+          - sagemaker:DescribeImageVersion
+          - sagemaker:DescribeNotebookInstance
+          - sagemaker:DescribeNotebookInstanceLifecycleConfig
+          - sagemaker:DeleteNotebookInstance
+          - sagemaker:StopNotebookInstance
+          - sagemaker:CreateNotebookInstanceLifecycleConfig
+          - sagemaker:StartNotebookInstance
+          - sagemaker:DeleteNotebookInstanceLifecycleConfig
+          - sagemaker:StopPipelineExecution
+          - sagemaker:CreateNotebookInstance
+          Resource:
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:*'
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:domain/*'
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:user-profile/*'
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:app/*'
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:flow-definition/*'
+
+  SVCLogsExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCLogsExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - cloudwatch:DeleteAlarms
+          - cloudwatch:DescribeAlarms
+          - cloudwatch:GetMetricData
+          - cloudwatch:GetMetricStatistics
+          - cloudwatch:ListMetrics
+          - cloudwatch:PutMetricAlarm
+          - cloudwatch:PutMetricData
+          - logs:CreateLogDelivery
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:DeleteLogDelivery
+          - logs:Describe*
+          - logs:GetLogDelivery
+          - logs:GetLogEvents
+          - logs:ListLogDeliveries
+          - logs:PutLogEvents
+          - logs:PutResourcePolicy
+          - logs:UpdateLogDelivery
+          Resource:
+            - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*/*'
+            - !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:*/*'
+
+  SVCEC2KMSExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCEC2KMSExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - ec2:CreateNetworkInterface
+          - ec2:CreateNetworkInterfacePermission
+          - ec2:CreateVpcEndpoint
+          - ec2:DeleteNetworkInterface
+          - ec2:DeleteNetworkInterfacePermission
+          - ec2:DescribeDhcpOptions
+          - ec2:DescribeNetworkInterfaces
+          - ec2:DescribeRouteTables
+          - ec2:DescribeSecurityGroups
+          - ec2:DescribeSubnets
+          - ec2:DescribeVpcEndpoints
+          - ec2:DescribeVpcs
+          - kms:DescribeKey
+          - kms:CreateGrant
+          - kms:ListAliases
+          - kms:GenerateDataKey
+          - kms:Encrypt
+          - kms:Decrypt
+          Resource:
+            - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*/*'
+            - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:*/*'
+
+  SVCS3ExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCS3ExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - s3:GetObject
+          - cloudformation:GetTemplateSummary
+          Resource: '*'
+
+  SVCIAMExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCIAMExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource:
+            - !GetAtt ServiceCatalogExecutionRole.Arn
+            - Fn::ImportValue: !Sub "${S3IAMConfigStackName}-SageMakerNotebookInstanceRole-ARN"
+
+  SVCCFTExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref ServiceCatalogExecutionRole
+      ManagedPolicyName: SVCCFTExecutionPolicy
+      Path: '/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+            - cloudformation:CreateStack
+            - cloudformation:DeleteStack
+            - cloudformation:Describe*
+          Resource:
+            - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*'
+            - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:*/*'
+
+  ServiceCatalogExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: ServiceCatalogExecutionRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "sagemaker.amazonaws.com"
+                - "servicecatalog.amazonaws.com"
+                - "cloudformation.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/service-role/"
+  NotebookCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+
+  AppServicesPortfolio:
+    Type: "AWS::ServiceCatalog::Portfolio"
+    Properties:
+      ProviderName: 'Central IT'
+      Description: 'Portfolio for demo'
+      DisplayName: 'Demo-Portfolio'
+
+  SageMakerNotebookProduct:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    DependsOn: ServiceCatalogExecutionRole
+    Properties:
+      Owner: 'Central IT'
+      Description: 'SageMaker Notebook'
+      Name: 'SageMaker Notebook'
+      ProvisioningArtifactParameters:
+        -
+          Name: "Sage Maker Notebook"
+          Info: { "LoadTemplateFromURL": !Sub "https://${S3BucketName}.s3.amazonaws.com/${ServiceCatalogTemplateName}" }
+
+  PortfolioProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioPrincipalAssociation"
+    DependsOn: ServiceCatalogExecutionRole
+    Properties:
+      PrincipalARN: !GetAtt ServiceCatalogExecutionRole.Arn
+      PortfolioId: !Ref AppServicesPortfolio
+      PrincipalType: IAM
+
+  UserPortfolioProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioPrincipalAssociation"
+    DependsOn: ServiceCatalogExecutionRole
+    Properties:
+      PrincipalARN: !Ref UserIAMPrincipal
+      PortfolioId: !Ref AppServicesPortfolio
+      PrincipalType: IAM
+
+  CoreBuildToolsProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref SageMakerNotebookProduct
+
+  CoreBuildToolsProductConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: CoreBuildToolsProductAssoc
+    Properties:
+      Description: 'IAM role to launch service catalog products'
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref SageMakerNotebookProduct
+      RoleArn: !GetAtt ServiceCatalogExecutionRole.Arn
+
+Outputs:
+  ServiceCatalogExecutionRoleArn:
+    Description: Service Catalog Execution Role ARN
+    Value: !GetAtt ServiceCatalogExecutionRole.Arn
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SMNotebookRole-ARN"

@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey" : "NotebookInstanceType",
+    "ParameterValue" : "ml.t2.medium"
+  },
+  {
+    "ParameterKey" : "S3IAMConfigStackName",
+    "ParameterValue" : "s3-iam-config"
+  },
+  {
+    "ParameterKey" : "ServiceCatalogTemplateName",
+    "ParameterValue" : "sm-notebook.yml"
+  },
+  {
+    "ParameterKey" : "S3BucketName",
+    "ParameterValue" : "<input_your_bucket_name>"
+  },
+  {
+    "ParameterKey" : "UserIAMPrincipal",
+    "ParameterValue" : "<input_your_iam_principal_arn>"
+  }
+]

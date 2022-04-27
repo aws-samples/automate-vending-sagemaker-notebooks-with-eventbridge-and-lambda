@@ -1,0 +1,126 @@
+# This sample, non-production-ready template describes a S3 Bucket and IAM roles.
+# © 2021 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
+# This AWS Content is provided subject to the terms of the AWS Customer Agreement available at
+# http://aws.amazon.com/agreement or other written agreement between Customer and either
+# Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template creates a the encrypted S3 Bucket which stores Config
+  files.
+
+Parameters:
+
+  SageMakerNotebookInstanceRoleName:
+    Description: Stack name which has all of the VPC configuration
+    Type: String
+
+Resources:
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+# Build Role for AWS Lambda functions
+  SageMakerNotebookInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref SageMakerNotebookInstanceRoleName
+      Description: 'This role will be leveraged by SageMaker notebook instances.'
+      MaxSessionDuration: 3600 # in seconds
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+# IAM Policy for SageMaker Presigned URL
+  SMNotebookEC2Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "SMNotebookEC2Policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:CreateSecurityGroup
+            - ec2:DeleteNetworkInterface
+            - ec2:DescribeDhcpOptions
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DescribeSecurityGroups
+            - ec2:DescribeSubnets
+            - ec2:DescribeVpcs
+            - ec2:ModifyNetworkInterfaceAttribute
+            - ec2:CreateTags
+            - ec2:AuthorizeSecurityGroupEgress
+            - ec2:AuthorizeSecurityGroupIngress
+            - ec2:CreateNetworkInterfacePermission
+            - ec2:DeleteNetworkInterfacePermission
+            - ec2:DeleteSecurityGroup
+            - ec2:RevokeSecurityGroupEgress
+            - ec2:RevokeSecurityGroupIngress
+          Resource:
+            - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:*'
+      Roles:
+        - !Ref SageMakerNotebookInstanceRole
+
+  SMNotebookPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "SMNotebookPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - sagemaker:CreateUserProfile
+            - sagemaker:DescribeUserProfile
+          Resource:
+            - !Sub 'arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:notebook-instance/*'
+      Roles:
+        - !Ref SageMakerNotebookInstanceRole
+
+Outputs:
+
+  S3BucketWebsiteURL:
+    Description: S3 Bucket WebsiteURL
+    Value: !GetAtt S3Bucket.WebsiteURL
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-Bucket-URL"
+
+  S3BucketArn:
+    Description: S3 Bucket ARN
+    Value: !GetAtt S3Bucket.Arn
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-Bucket-ARN"
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-Bucket-Name"
+
+  SageMakerNotebookInstanceRoleARN:
+    Description: S3 Bucket Name
+    Value: !GetAtt SageMakerNotebookInstanceRole.Arn
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SageMakerNotebookInstanceRole-ARN"

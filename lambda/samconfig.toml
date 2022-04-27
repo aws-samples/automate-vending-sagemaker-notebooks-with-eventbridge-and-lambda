@@ -1,0 +1,7 @@
+version=0.1
+
+[dev]
+[dev.deploy]
+[dev.deploy.parameters]
+stack_name = "sam-app"
+capabilities = "CAPABILITY_IAM"
