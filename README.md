@@ -1,4 +1,4 @@
-# SageMaker Notebook Automation with EventBridge and Lambda
+# Automate vending SageMaker notebooks with EventBridge and Lambda
 ---
 
 Having an environment capable of delivering Amazon SageMaker notebook instances quickly provides a means for data scientists and business analysts to efficiently respond to organizational needs.  
